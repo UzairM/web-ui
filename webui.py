@@ -34,6 +34,7 @@ from src.controller.custom_controller import CustomController
 from gradio.themes import Citrus, Default, Glass, Monochrome, Ocean, Origin, Soft, Base
 from src.utils.default_config_settings import default_config, load_config_from_file, save_config_to_file, save_current_config, update_ui_from_config
 from src.utils.utils import update_model_dropdown, get_latest_files, capture_screenshot
+from src.utils.video_to_prompt import video_to_prompt
 
 
 # Global variables for persistence
@@ -682,7 +683,35 @@ async def run_deep_search(research_task, max_search_iteration_input, max_query_p
                                                         )
     
     return markdown_content, file_path, gr.update(value="Stop", interactive=True),  gr.update(interactive=True) 
+
+
+async def process_video_for_prompt(video_path):
+    """
+    Process a video file to generate a task prompt for the LLM agent.
     
+    Args:
+        video_path: Path to the uploaded video file
+        
+    Returns:
+        str: Generated task prompt
+    """
+    try:
+        if not video_path:
+            return "Please upload a video first.", gr.update(interactive=True)
+        
+        logger.info(f"Processing video for prompt generation: {video_path}")
+        
+        # Show processing status in UI
+        prompt = await video_to_prompt(video_path)
+        
+        logger.info("Prompt generation completed")
+        
+        # Return the generated prompt and re-enable the button
+        return prompt, gr.update(interactive=True)
+    
+    except Exception as e:
+        logger.error(f"Error processing video: {str(e)}")
+        return f"Error generating prompt: {str(e)}", gr.update(interactive=True)
 
 def create_ui(config, theme_name="Ocean"):
     css = """
@@ -879,6 +908,17 @@ def create_ui(config, theme_name="Ocean"):
                     )
 
             with gr.TabItem("🤖 Run Agent", id=4):
+                with gr.Group():
+                    gr.Markdown("### 📹 Video Upload")
+                    with gr.Row():
+                        video_upload = gr.Video(
+                            label="Upload Video",
+                            interactive=True,
+                        )
+                    with gr.Row():
+                        generate_prompt_button = gr.Button("🔄 Generate Prompt", variant="secondary")
+                
+                gr.Markdown("### 📝 Task Description")
                 task = gr.Textbox(
                     label="Task Description",
                     lines=4,
@@ -891,6 +931,14 @@ def create_ui(config, theme_name="Ocean"):
                     lines=3,
                     placeholder="Add any helpful context or instructions...",
                     info="Optional hints to help the LLM complete the task",
+                )
+
+                # Connect the generate_prompt_button to the process_video_for_prompt function
+                generate_prompt_button.click(
+                    fn=process_video_for_prompt,
+                    inputs=[video_upload],
+                    outputs=[task, generate_prompt_button],
+                    show_progress='full',
                 )
 
                 with gr.Row():
